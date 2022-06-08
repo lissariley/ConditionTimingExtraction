@@ -13,4 +13,4 @@ Run this command:
 
 for documentation, usage, and notes.
 
-Based on a script by Roy Moral, kms@cornell.edu, and ebr@cornell.edu
+Based on a script by Roy Moral, kms424@cornell.edu, and er482@cornell.edu

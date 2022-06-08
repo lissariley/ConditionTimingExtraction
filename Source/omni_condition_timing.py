@@ -426,7 +426,9 @@ def evaluate_condition_class_spec(condition_class_spec_string):
 
     return condition_class_spec
 
-def create_condition_file(output_directory, subject_ID, condition, condition_fields, timestamps, prefix=OUTPUT_PREFIX, extension=OUTPUT_EXTENSION, concatenate_runs=False):
+def create_condition_file(output_directory, subject_ID, condition,
+    condition_fields, timestamps, prefix=OUTPUT_PREFIX,
+    extension=OUTPUT_EXTENSION, concatenate_runs=False, skip_empty_runs=False):
     # create_condition_file:
     #   Using found timestamps, create a condition timing file containing the
     #       timestamps of any trials that match the given condition
@@ -442,6 +444,10 @@ def create_condition_file(output_directory, subject_ID, condition, condition_fie
     #       concatenate_runs = a boolean flag indicating that multiple runs
     #           should be combined into a single series of timestamps. The suffix
     #           '-runconcat' will be added to the filename before the extension.
+    #       skip_empty_runs = a boolean flag indicating whether or not runs with no times
+    #           should get an empty row in the timing file. If True, the timing file will
+    #           not have any blank rows. If False, the timing file will contain one or more
+    #           blank rows if one or more runs have no times for the given condition
     #   Returns:
     #       timestamps = a dictionary of timestamp data organized by subject ID
     #           then run number
@@ -466,7 +472,7 @@ def create_condition_file(output_directory, subject_ID, condition, condition_fie
 
     # Write the timestamp data to the file
     with open(file_path, 'w') as f:
-        f.write('\n'.join([' '.join([str(t) for t in run_timestamps]) for run_timestamps in timestamps]))
+        f.write('\n'.join([' '.join([str(t) for t in run_timestamps]) for run_timestamps in timestamps if ((not skip_empty_runs) or len(run_timestamps) > 0)]))
 
 def print_help():
     # print_help:
@@ -480,24 +486,30 @@ def print_help():
     print('        python omni_condition_timing.py [mid-task-dir] [post-task-dir] field1')
     print('            field2 ... fieldN [output-dir]')
     print()
-    print('            mid-task-dir:        Path to directory where mid-task data can be')
-    print('                                 found')
-    print('            post-task-dir:       Path to directory where post-task data can')
-    print('                                 be found')
-    print('            field1...N:          One or more field names to use as conditions.')
-    print('                                 Each must match a column name in the')
-    print('                                 mid_task or post_task data tables. Field')
-    print('                                 names may be optionally followed by class ')
-    print('                                 grouping statements. See note below.')
-    print('                                 You may also use use the field name \'run\'')
-    print('                                 to use run number as a condition.')
-    print('            output-dir:          Path to directory where the output timing')
-    print('                                 files should be written')
-    print('            --concatenate-runs   Optional flag indicating that the')
-    print('                                 timestamps for each run should not be reset')
-    print('                                 at the beginning of each run, and should all')
-    print('                                 be printed on a single line in the output')
-    print('                                 file')
+    print('            mid-task-dir:          Path to directory where mid-task data can be')
+    print('                                   found')
+    print('            post-task-dir:         Path to directory where post-task data can')
+    print('                                   be found')
+    print('            field1...N:            One or more field names to use as conditions.')
+    print('                                   Each must match a column name in the')
+    print('                                   mid_task or post_task data tables. Field')
+    print('                                   names may be optionally followed by class ')
+    print('                                   grouping statements. See note below.')
+    print('                                   You may also use use the field name \'run\'')
+    print('                                   to use run number as a condition.')
+    print('            output-dir:            Path to directory where the output timing')
+    print('                                   files should be written')
+    print('            -c, --concatenate-runs Optional flag indicating that the')
+    print('                                   timestamps for each run should not be reset')
+    print('                                   at the beginning of each run, and should all')
+    print('                                   be printed on a single line in the output')
+    print('                                   file')
+    print('            -s, --skip-empty-runs  Optional flag indicating that empty runs')
+    print('                                   should NOT result in an empty row in the')
+    print('                                   timing file. By default, a run that does not')
+    print('                                   contain any times for the selected condition')
+    print('                                   will produce an empty row. If you include this')
+    print('                                   flag, empty rows will not be produced.')
     print()
     print('    Example:')
     print()
@@ -534,13 +546,17 @@ if __name__ == '__main__':
     ### Parse command line arguments
     # Search for boolean flags first
     concatenate_runs = False
+    skip_empty_runs = False
     flag_idx = []
     for idx, arg in enumerate(sys.argv):
         if arg == '-h':
             flag_idx.append(idx)
             print_help()
             exit()
-        elif arg == '--concatenate-runs':
+        elif arg in ['-s', '--skip-empty-runs']:
+            flag_idx.append(idx)
+            skip_empty_runs = True
+        elif arg in ['-c', '--concatenate-runs']:
             flag_idx.append(idx)
             concatenate_runs = True
 
@@ -613,7 +629,10 @@ if __name__ == '__main__':
                 # Loop over detected conditions
                 for condition in timestamps:
                     # Save condition timing file
-                    create_condition_file(output_directory, subject_ID, condition, condition_fields, timestamps[condition], concatenate_runs=concatenate_runs)
+                    create_condition_file(output_directory, subject_ID,
+                        condition, condition_fields, timestamps[condition],
+                        concatenate_runs=concatenate_runs,
+                        skip_empty_runs=skip_empty_runs)
         # Print out warning & error messages for this subject
         for warning in subjects[subject_ID]['warnings']:
             print('    WARNING: ', warning)

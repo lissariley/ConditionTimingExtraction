@@ -477,6 +477,7 @@ def create_condition_file(output_directory, subject_ID, condition,
 def print_help():
     # print_help:
     #   Print out usage help info
+    print()
     print('omni_condition_timing:')
     print('    Create timing files across a given set of conditions, using both mid-task')
     print('    data and post-task data.')
@@ -528,11 +529,13 @@ def print_help():
     print('        Note that each class grouping statement is attached to its field name')
     print('        by a colon, and the statement that follows the colon is a valid')
     print('        python dictionary literal of the form:')
-    print('        {class1:[val1,val2,...,vallN],class2:[val1,val2,...,valN],...,classN:[val1,val2,...,valN]}')
+    print('          {class1:[val1,val2,...,vallN],class2:[val1,val2,...,valN],...')
+    print('             ,classN:[val1,val2,...,valN]}')
     print('        Note that the field argument with a class grouping statement needs')
     print('        to be enclosed in quotes that are not the same kind of quotes used')
     print('        within the class grouping statement, otherwise the shell may')
     print('        improperly parse the argument list.')
+    print()
     print('        ****Run concatenation****')
     print('        Timestamps for Run N will be modified by adding on the sum of the ')
     print('        last values of the field "nextOnset" for runs 1 to N-1.')
@@ -542,6 +545,11 @@ def print_help():
 if __name__ == '__main__':
     # This runs when the script is directly invoked (as opposed to imported as a library)
     import sys
+
+    if len(sys.argv) == 1:
+        # No command line arguments given just print out the help and exit.
+        print_help()
+        exit()
 
     ### Parse command line arguments
     # Search for boolean flags first
@@ -586,6 +594,8 @@ if __name__ == '__main__':
             if ':' in arg:
                 # Grouping classes were provided for this field
                 field, class_spec = arg.split(":", 1)
+                print('class spec:')
+                print(class_spec)
                 class_spec = evaluate_condition_class_spec(class_spec)
             else:
                 # No grouping classes provided

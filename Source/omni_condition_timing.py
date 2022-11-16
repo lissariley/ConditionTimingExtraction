@@ -490,7 +490,7 @@ def create_condition_file(output_directory, subject_ID, condition,
     with open(file_path, 'w') as f:
         f.write('\n'.join([' '.join([str(t) for t in run_timestamps]) for run_timestamps in timestamps if ((not skip_empty_runs) or len(run_timestamps) > 0)]))
 
-def collect_field_values(fields):
+def collect_field_values(fields, initial_required_values={}):
     print()
     required_values = {}
     for field in fields:
@@ -499,6 +499,10 @@ def collect_field_values(fields):
             print('Field: {f}'.format(f=field))
             print('     Type a list of possible values for this field, or press enter to skip value entry for this field.')
             print('     Format the list as a valid python list literal (eg. ["string0", "string1", 7, 22, "string2"])')
+            if field in initial_required_values:
+                print('         Default = {v}'.format(v=initial_required_values[field]))
+            else:
+                initial_required_values[field] = []
             raw_values = input("> ")
             if len(raw_values) > 0:
                 try:
@@ -512,10 +516,21 @@ def collect_field_values(fields):
                     continue
                 required_values[field] = values
             else:
-                required_values[field] = []
+                required_values[field] = initial_required_values[field]
             done = True
             print()
     return required_values
+
+def parse_required_value_statement(required_value_statement):
+    try:
+        field, values = required_value_statement.split(':', 1)
+        values = literal_eval(values)
+        if type(values) is not list:
+            raise SyntaxError()
+    except (ValueError, SyntaxError):
+        raise SyntaxError('Incorrect syntax for required value statement: {s}'.format(s=required_value_statement))
+
+    return field, values
 
 def print_help():
     # print_help:
@@ -559,6 +574,14 @@ def print_help():
     print('                                   for each field. This allows for the creation')
     print('                                   of blank timing files for field values that')
     print('                                   do not occur in a participant\'s data.')
+    print('            -V [field]:[values]    Optional argument providing a list of required')
+    print('                                   required values for a particular field. See')
+    print('                                   the Notes section below for syntax details.')
+    print('                                   This allows for the creation of blank timing ')
+    print('                                   files for field values that do not occur in a ')
+    print('                                   participant\'s data. This can be used instead')
+    print('                                   of or in conjunction with the interactive -R')
+    print('                                   flag.')
     print()
     print('    Example:')
     print()
@@ -591,6 +614,16 @@ def print_help():
     print('        are missing run M such that M < N, then the subject will be dropped.')
     print()
     print('        ****Requird values****')
+    print('        Using the -R flag or -V argument syntax, it is possible to specify')
+    print('        sets of required values for one or more fields. This will ensure that')
+    print('        blank placeholder files are produced for all desired conditions, even')
+    print('        for conditions containing a field value that never occurs in the ')
+    print('        participant data. The -R flag provides an interactive interface for')
+    print('        specifying required fields. The -V argument syntax allows for specifying')
+    print('        the required values as arguments. The syntax is as follows:')
+    print('             omni_condition_timing.py ... -V fieldname:["string1", "string2", ')
+    print('                 3, 4, ..., "stringN"]')
+    print('        You can use multiple -V arguments for multiple fields.')
     print('        ')
 
 if __name__ == '__main__':
@@ -607,6 +640,7 @@ if __name__ == '__main__':
     concatenate_runs = False
     skip_empty_runs = False
     collect_required_values = False;
+    required_values = {}
     flag_idx = []
     for idx, arg in enumerate(sys.argv):
         if arg == '-h':
@@ -622,6 +656,14 @@ if __name__ == '__main__':
         elif arg in ['-R', '--required_values']:
             flag_idx.append(idx)
             collect_required_values = True;
+        elif arg == '-V':
+            # Required value input
+            flag_idx.append(idx)
+            flag_idx.append(idx+1)
+            required_value_statement = sys.argv[idx + 1]
+            field, values = parse_required_value_statement(required_value_statement)
+            if field is not None:
+                required_values[field] = values
 
     # Remove boolean flags from argument list
     sys.argv = [arg for idx, arg in enumerate(sys.argv) if idx not in flag_idx]
@@ -671,9 +713,7 @@ if __name__ == '__main__':
         raise ValueError('Please specify at least one condition field for which to find timing info. Run this script with the -h flag to get usage help.')
 
     if collect_required_values:
-        required_values = collect_field_values(condition_fields)
-    else:
-        required_values = {}
+        required_values = collect_field_values(condition_fields, initial_required_values=required_values)
 
     ### Do it
     print()

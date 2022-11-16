@@ -15,7 +15,8 @@
 from pathlib import Path
 import re
 import csv
-import ast
+from ast import literal_eval
+from itertools import product
 
 ### Define some constants & defaults
 TR_LENGTH = 2.5
@@ -238,7 +239,7 @@ def convert_column_type(data_column):
             return new_data_column
     return data_column
 
-def get_timestamps(subject_data, condition_fields, condition_classes, timing_field='cycleOnset', concatenate_runs=False, concatenation_timing_field='nextOnset'):
+def get_timestamps(subject_data, condition_fields, condition_classes, required_field_values={}, timing_field='cycleOnset', concatenate_runs=False, concatenation_timing_field='nextOnset'):
     # get_timestamps:
     #   Gather timestamps for given condition fields for all subjects
     #   Arguments:
@@ -262,6 +263,10 @@ def get_timestamps(subject_data, condition_fields, condition_classes, timing_fie
     #       concatenation_timing_field = the field that will be used to join
     #           the timestamps of subsequent runs ONLY if concatenate_runs is
     #           True. Otherwise this argument is ignored.
+    #       required_field_values = a dictionary that maps field names to
+    #           potential field values. If not empty, this can be used to
+    #           generate empty placeholder conditions that didn't actually occur
+    #           for a participant
     #   Returns:
     #       timestamps = a dictionary of timestamp data organized by subject ID
     #           then run number
@@ -327,10 +332,19 @@ def get_timestamps(subject_data, condition_fields, condition_classes, timing_fie
         # Apply value groupings, if any are requested
         data = apply_value_grouping(data, condition_fields, condition_classes)
 
-        # Generate a list of all conditions for the requested condition_fields
+        # Ensure that required_field_values has at least an empty list for each condition_field
+        for condition_field in condition_fields:
+            if condition_field not in required_field_values:
+                required_field_values[condition_field] = [];
+
+        # Generate a list of all field values for each of the requested condition_fields
+        field_values = [set(data[condition_field] + required_field_values[condition_field]) for condition_field in condition_fields]
+        # Generate a set of unique conditions for the requested condition_fields, where each condition is a combination of field values
+        unique_conditions = set(product(*field_values))
+
+        # Generate a list of all conditions that occurred in order of occurrence:
         conditions = list(zip(*[data[condition_field] for condition_field in condition_fields]))
-        # Generate a set of unique conditions for the requested condition_fields
-        unique_conditions = set(conditions)
+
         start_timestamp = data[timing_field][0]
         for target_condition in unique_conditions:
             # Create timing file for this condition
@@ -352,8 +366,8 @@ def get_timestamps(subject_data, condition_fields, condition_classes, timing_fie
                     # Record timestamp
                     timestamps[target_condition][run_idx].append(new_timestamp)
                     count = count + 1
-            if not foundCondition:
-                print('Found no match for ', target_condition)
+            # if not foundCondition:
+            #     print('Found no match for ', target_condition)
 
     if concatenate_runs:
         # Concatenate run timestamps
@@ -407,7 +421,7 @@ def evaluate_condition_class_spec(condition_class_spec_string):
     format_good = True
     format_error = ''
     try:
-        condition_class_spec = ast.literal_eval(condition_class_spec_string)
+        condition_class_spec = literal_eval(condition_class_spec_string)
         if type(condition_class_spec) is not dict:
             # The grouping specification is not a dictionary
             format_good = False
@@ -474,6 +488,33 @@ def create_condition_file(output_directory, subject_ID, condition,
     with open(file_path, 'w') as f:
         f.write('\n'.join([' '.join([str(t) for t in run_timestamps]) for run_timestamps in timestamps if ((not skip_empty_runs) or len(run_timestamps) > 0)]))
 
+def collect_field_values(fields):
+    print()
+    required_values = {}
+    for field in fields:
+        done = False
+        while not done:
+            print('Field: {f}'.format(f=field))
+            print('     Type a list of possible values for this field, or press enter to skip value entry for this field.')
+            print('     Format the list as a valid python list literal (eg. ["string0", "string1", 7, 22, "string2"])')
+            raw_values = input("> ")
+            if len(raw_values) > 0:
+                try:
+                    values = literal_eval(raw_values)
+                    if type(values) is not list:
+                        raise SyntaxError
+                except (SyntaxError, ValueError):
+                    print()
+                    print('Invalid entry!')
+                    print()
+                    continue
+                required_values[field] = values
+            else:
+                required_values[field] = []
+            done = True
+            print()
+    return required_values
+
 def print_help():
     # print_help:
     #   Print out usage help info
@@ -511,6 +552,11 @@ def print_help():
     print('                                   contain any times for the selected condition')
     print('                                   will produce an empty row. If you include this')
     print('                                   flag, empty rows will not be produced.')
+    print('            -R, --required_values  Optional flag indicating that the user should')
+    print('                                   be prompted to enter lists of required values')
+    print('                                   for each field. This allows for the creation')
+    print('                                   of blank timing files for field values that')
+    print('                                   do not occur in a participant\'s data.')
     print()
     print('    Example:')
     print()
@@ -541,6 +587,9 @@ def print_help():
     print('        last values of the field "nextOnset" for runs 1 to N-1.')
     print('        Note that if run concatenation is on, and subjects have run N, but')
     print('        are missing run M such that M < N, then the subject will be dropped.')
+    print()
+    print('        ****Requird values****')
+    print('        ')
 
 if __name__ == '__main__':
     # This runs when the script is directly invoked (as opposed to imported as a library)
@@ -555,6 +604,7 @@ if __name__ == '__main__':
     # Search for boolean flags first
     concatenate_runs = False
     skip_empty_runs = False
+    collect_required_values = False;
     flag_idx = []
     for idx, arg in enumerate(sys.argv):
         if arg == '-h':
@@ -567,6 +617,9 @@ if __name__ == '__main__':
         elif arg in ['-c', '--concatenate-runs']:
             flag_idx.append(idx)
             concatenate_runs = True
+        elif arg in ['-R', '--required_values']:
+            flag_idx.append(idx)
+            collect_required_values = True;
 
     # Remove boolean flags from argument list
     sys.argv = [arg for idx, arg in enumerate(sys.argv) if idx not in flag_idx]
@@ -594,8 +647,6 @@ if __name__ == '__main__':
             if ':' in arg:
                 # Grouping classes were provided for this field
                 field, class_spec = arg.split(":", 1)
-                print('class spec:')
-                print(class_spec)
                 class_spec = evaluate_condition_class_spec(class_spec)
             else:
                 # No grouping classes provided
@@ -617,6 +668,11 @@ if __name__ == '__main__':
     if len(condition_fields) == 0:
         raise ValueError('Please specify at least one condition field for which to find timing info. Run this script with the -h flag to get usage help.')
 
+    if collect_required_values:
+        required_values = collect_field_values(condition_fields)
+    else:
+        required_values = {}
+
     ### Do it
     print()
     print('Finding subject files...')
@@ -630,7 +686,7 @@ if __name__ == '__main__':
             pass
         else:
             # Collect and organize timestamps for each subject, run, and condition
-            timestamps, warnings, error = get_timestamps(subjects[subject_ID], condition_fields, condition_classes, concatenate_runs=concatenate_runs)
+            timestamps, warnings, error = get_timestamps(subjects[subject_ID], condition_fields, condition_classes, required_field_values=required_values, concatenate_runs=concatenate_runs)
             if error is not None:
                 # Something must be invalid - skip this subject
                 subjects[subject_ID]['errors'].append(error)
@@ -658,6 +714,7 @@ if __name__ == '__main__':
 
     ### Print summary report
     print('******************** SUMMARY REPORT ********************')
+    print('Run settings:')
     print('  Condition fields selected:')
     for condition_field, condition_class_spec in zip(condition_fields, condition_classes):
         if condition_class_spec is None:
@@ -665,6 +722,10 @@ if __name__ == '__main__':
         else:
             condition_class_text = ' with grouping scheme: {c}'.format(c=condition_class_spec)
         print('    {c}'.format(c=(condition_field + condition_class_text)))
+    print('  Required values provided:')
+    for condition_field in required_values:
+        print('    {f}: {v}'.format(f=condition_field, v=required_values[condition_field]))
+    print('Results:')
     print('  Run concatenation: {onoff}'.format(onoff=('on' if concatenate_runs else 'off')))
     print('  ')
     print('  Subjects without errors or warnings ({k} of {n}):'.format(k=len(perfectSubjects), n=len(subjects)))

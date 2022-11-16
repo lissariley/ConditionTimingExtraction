@@ -1,8 +1,10 @@
+#!/usr/bin/python
+
 # omni_condition_timing.py
 #
 # Run the following
 #
-#   python omni_condition_timing.py -h
+#   python omni_condition_timing.py
 #
 # for documentation, usage, and notes
 #

@@ -444,7 +444,8 @@ def evaluate_condition_class_spec(condition_class_spec_string):
 
 def create_condition_file(output_directory, subject_ID, condition,
     condition_fields, timestamps, prefix=OUTPUT_PREFIX,
-    extension=OUTPUT_EXTENSION, concatenate_runs=False, skip_empty_runs=False):
+    extension=OUTPUT_EXTENSION, concatenate_runs=False, skip_empty_runs=False,
+    empty_file_symbol='*'):
     # create_condition_file:
     #   Using found timestamps, create a condition timing file containing the
     #       timestamps of any trials that match the given condition
@@ -464,6 +465,8 @@ def create_condition_file(output_directory, subject_ID, condition,
     #           should get an empty row in the timing file. If True, the timing file will
     #           not have any blank rows. If False, the timing file will contain one or more
     #           blank rows if one or more runs have no times for the given condition
+    #       empty_file_symbol = an optional string to put in an empty file, as may be
+    #           required by AFNI 3dDeconvolve`
     #   Returns:
     #       timestamps = a dictionary of timestamp data organized by subject ID
     #           then run number
@@ -487,8 +490,11 @@ def create_condition_file(output_directory, subject_ID, condition,
     file_path = Path(output_directory) / Path(file_name)
 
     # Write the timestamp data to the file
+    file_text = '\n'.join([' '.join([str(t) for t in run_timestamps]) for run_timestamps in timestamps if ((not skip_empty_runs) or len(run_timestamps) > 0)])
+    if len(file_text.strip()) == 0:
+        file_text = empty_file_symbol
     with open(file_path, 'w') as f:
-        f.write('\n'.join([' '.join([str(t) for t in run_timestamps]) for run_timestamps in timestamps if ((not skip_empty_runs) or len(run_timestamps) > 0)]))
+        f.write(file_text)
 
 def collect_field_values(fields, initial_required_values={}):
     print()
@@ -582,6 +588,9 @@ def print_help():
     print('                                   participant\'s data. This can be used instead')
     print('                                   of or in conjunction with the interactive -R')
     print('                                   flag.')
+    print('            -E, --empty [symbol]   Optional argument providing a symbol that will')
+    print('                                   be added to empty files. This may be needed by')
+    print('                                   AFNI 3dDeconvolve. Default is "*".')
     print()
     print('    Example:')
     print()
@@ -641,6 +650,7 @@ if __name__ == '__main__':
     skip_empty_runs = False
     collect_required_values = False;
     required_values = {}
+    empty_file_symbol = '*'
     flag_idx = []
     for idx, arg in enumerate(sys.argv):
         if arg == '-h':
@@ -664,6 +674,11 @@ if __name__ == '__main__':
             field, values = parse_required_value_statement(required_value_statement)
             if field is not None:
                 required_values[field] = values
+        elif arg in ['-E', '--empty']:
+            # Required value input
+            flag_idx.append(idx)
+            flag_idx.append(idx+1)
+            empty_file_symbol = sys.argv[idx + 1]
 
     # Remove boolean flags from argument list
     sys.argv = [arg for idx, arg in enumerate(sys.argv) if idx not in flag_idx]
@@ -740,7 +755,7 @@ if __name__ == '__main__':
                     create_condition_file(output_directory, subject_ID,
                         condition, condition_fields, timestamps[condition],
                         concatenate_runs=concatenate_runs,
-                        skip_empty_runs=skip_empty_runs)
+                        skip_empty_runs=skip_empty_runs, empty_file_symbol=empty_file_symbol)
         # Print out warning & error messages for this subject
         for warning in subjects[subject_ID]['warnings']:
             print('    WARNING: ', warning)
